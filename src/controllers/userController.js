@@ -2,7 +2,6 @@ const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
-// Función para registrar usuario
 const registerUser = async (req, res) => {
   const { email, password } = req.body;
 
@@ -18,23 +17,21 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ message: "El usuario ya existe" });
     }
 
-    // Encriptar contraseña
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     const user = await User.create({
       email,
       password: hashedPassword,
-      name: email.split("@")[0], // Agrega nombre si es necesario
+      name: email.split("@")[0],
     });
 
-    // Generar token JWT
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "1h",
+      expiresIn: "24h",
     });
 
     res.status(201).json({
       message: "Usuario registrado exitosamente",
-      token, // Retorna el token
+      token,
       user: {
         id: user._id,
         email: user.email,
@@ -42,6 +39,7 @@ const registerUser = async (req, res) => {
         avatar: user.avatar,
         backgroundImage: user.backgroundImage,
         favorites: user.favorites,
+        history: user.history,
       },
     });
   } catch (error) {
@@ -51,7 +49,6 @@ const registerUser = async (req, res) => {
   }
 };
 
-// Función para iniciar sesión
 const loginUser = async (req, res) => {
   const { email, password } = req.body;
 
@@ -72,9 +69,8 @@ const loginUser = async (req, res) => {
       return res.status(400).json({ message: "Contraseña incorrecta" });
     }
 
-    // Generar token JWT
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "1h",
+      expiresIn: "24h",
     });
 
     res.json({
@@ -87,6 +83,7 @@ const loginUser = async (req, res) => {
         avatar: user.avatar,
         backgroundImage: user.backgroundImage,
         favorites: user.favorites,
+        history: user.history,
       },
     });
   } catch (error) {
@@ -96,10 +93,9 @@ const loginUser = async (req, res) => {
   }
 };
 
-// Obtener perfil del usuario
 const getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id); // Usuario autenticado gracias al middleware protect
+    const user = await User.findById(req.user.id);
     res.json({
       id: user._id,
       name: user.name || "Usuario",
@@ -110,6 +106,7 @@ const getProfile = async (req, res) => {
       backgroundImage:
         user.backgroundImage || "https://via.placeholder.com/600",
       favorites: user.favorites,
+      history: user.history,
     });
   } catch (error) {
     res
@@ -118,17 +115,16 @@ const getProfile = async (req, res) => {
   }
 };
 
-// Guardar actividad: agregar a favoritos o historial
 const saveUserActivity = async (req, res) => {
-  const { type, data } = req.body; // type: "favorite" o "history"
+  const { type, data } = req.body;
 
   try {
     const user = req.user;
 
     if (type === "favorite") {
-      user.favorites.push(data); // Agregar a favoritos
+      user.favorites.push(data);
     } else if (type === "history") {
-      user.history.push(data); // Agregar al historial
+      user.history.push(data);
     } else {
       return res.status(400).json({ message: "Tipo de actividad no válido" });
     }
@@ -149,12 +145,10 @@ const updateProfile = async (req, res) => {
   const { name, avatar, backgroundImage, email, password } = req.body;
 
   try {
-    const user = req.user; // Usuario autenticado (middleware `protect`)
+    const user = req.user;
 
-    // Actualizar el nombre si se proporciona
     if (name) user.name = name;
 
-    // Actualizar el avatar si se proporciona y validar formato Base64
     if (avatar) {
       if (!avatar.startsWith("data:image/")) {
         return res
@@ -164,7 +158,6 @@ const updateProfile = async (req, res) => {
       user.avatar = avatar;
     }
 
-    // Actualizar la imagen de fondo si se proporciona y validar formato Base64
     if (backgroundImage) {
       if (!backgroundImage.startsWith("data:image/")) {
         return res.status(400).json({
@@ -174,7 +167,6 @@ const updateProfile = async (req, res) => {
       user.backgroundImage = backgroundImage;
     }
 
-    // Actualizar el correo electrónico si se proporciona y validar
     if (email) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
@@ -185,22 +177,19 @@ const updateProfile = async (req, res) => {
       user.email = email;
     }
 
-    // Actualizar la contraseña si se proporciona y validar
     if (password) {
       if (password.length < 6) {
         return res
           .status(400)
           .json({ message: "La contraseña debe tener al menos 6 caracteres." });
       }
-      const bcrypt = require("bcrypt"); // Asegúrate de tener bcrypt instalado
-      const hashedPassword = await bcrypt.hash(password, 10); // Encripta la nueva contraseña
+      const bcrypt = require("bcrypt");
+      const hashedPassword = await bcrypt.hash(password, 10);
       user.password = hashedPassword;
     }
 
-    // Guardar los cambios en la base de datos
     await user.save();
 
-    // Responder con los datos actualizados del usuario
     res.json({
       message: "Perfil actualizado exitosamente",
       user: {
@@ -210,6 +199,7 @@ const updateProfile = async (req, res) => {
         avatar: user.avatar,
         backgroundImage: user.backgroundImage,
         favorites: user.favorites,
+        history: user.history,
       },
     });
   } catch (error) {
@@ -223,21 +213,17 @@ const toggleFavorite = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
 
-    // Filtrar duplicados de forma segura
-    const updatedFavorites = user.favorites.filter(
-      (fav) => fav.animeId !== animeId
+    const favoriteIndex = user.favorites.findIndex(
+      (fav) => fav.animeId === animeId
     );
 
-    if (updatedFavorites.length === user.favorites.length) {
-      // No estaba en favoritos, agregarlo
-      updatedFavorites.push({ animeId, title, image, subtitle });
+    if (favoriteIndex === -1) {
+      user.favorites.push({ animeId, title, image, subtitle });
       message = "Anime añadido a favoritos";
     } else {
-      // Ya estaba en favoritos, lo eliminamos
+      user.favorites.splice(favoriteIndex, 1);
       message = "Anime eliminado de favoritos";
     }
-
-    user.favorites = updatedFavorites;
 
     await user.save();
 
@@ -253,6 +239,232 @@ const toggleFavorite = async (req, res) => {
   }
 };
 
+const addToHistory = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    const newHistoryItem = req.body;
+
+    const exists = user.history.some(
+      (item) => item.mal_id === newHistoryItem.mal_id
+    );
+    if (exists) {
+      return res
+        .status(400)
+        .json({ message: "El elemento ya está en el historial" });
+    }
+
+    user.history.push(newHistoryItem);
+    await user.save();
+
+    res.json({
+      message: "Elemento añadido al historial",
+      history: user.history,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Error al añadir al historial",
+      error: error.message,
+    });
+  }
+};
+
+const removeFromHistory = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    user.history = user.history.filter((item) => item.mal_id !== req.params.id);
+    await user.save();
+
+    res.json({
+      message: "Elemento eliminado del historial",
+      history: user.history,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Error al eliminar del historial",
+      error: error.message,
+    });
+  }
+};
+
+const clearHistory = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    user.history = [];
+    await user.save();
+
+    res.json({ message: "Historial limpiado", history: user.history });
+  } catch (error) {
+    res.status(500).json({ message: "Error al limpiar el historial", error });
+  }
+};
+
+const verifyEmail = async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res
+      .status(400)
+      .json({ message: "Por favor, proporciona un correo válido." });
+  }
+
+  try {
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({ message: "Correo no encontrado." });
+    }
+
+    res.json({ message: "Correo verificado con éxito.", email });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "Error al verificar el correo.", error: error.message });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  const { email, newPassword } = req.body;
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado." });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    await user.save();
+
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "24h",
+    });
+
+    res.json({
+      message: "Contraseña actualizada exitosamente.",
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        avatar: user.avatar,
+        backgroundImage: user.backgroundImage,
+        favorites: user.favorites,
+        history: user.history,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Error al actualizar la contraseña.",
+      error: error.message,
+    });
+  }
+};
+const addProfile = async (req, res) => {
+  const { name, avatar } = req.body;
+
+  try {
+    const user = await User.findById(req.user.id);
+
+    const newProfile = {
+      id: user.profiles.length + 1,
+      name,
+      avatar: avatar || "https://via.placeholder.com/100",
+    };
+
+    user.profiles.push(newProfile);
+    await user.save();
+
+    res.json({
+      message: "Perfil añadido exitosamente",
+      profiles: user.profiles,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Error al añadir el perfil",
+      error: error.message,
+    });
+  }
+};
+const getProfiles = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    res.json({ profiles: user.profiles });
+  } catch (error) {
+    res.status(500).json({
+      message: "Error al obtener perfiles",
+      error: error.message,
+    });
+  }
+};
+const deleteProfile = async (req, res) => {
+  const profileId = req.params.id;
+
+  try {
+    const user = await User.findById(req.user.id);
+
+    const profileIndex = user.profiles.findIndex(
+      (profile) => profile.id === profileId
+    );
+    if (profileIndex === -1) {
+      return res.status(404).json({ message: "Perfil no encontrado" });
+    }
+
+    user.profiles.splice(profileIndex, 1);
+    await user.save();
+
+    res.json({
+      message: "Perfil eliminado exitosamente",
+      profiles: user.profiles,
+    });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "Error al eliminar el perfil", error: error.message });
+  }
+};
+
+const getCrunchylists = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    res.status(200).json(user.crunchylists);
+  } catch (error) {
+    res.status(500).json({ message: "Error al obtener las Crunchylists." });
+  }
+};
+
+const saveCrunchylist = async (req, res) => {
+  const { id, name, content, createdAt } = req.body;
+
+  try {
+    const user = await User.findById(req.user.id);
+    const listIndex = user.crunchylists.findIndex((list) => list.id === id);
+
+    if (listIndex !== -1) {
+      user.crunchylists[listIndex] = { id, name, content, createdAt };
+    } else {
+      user.crunchylists.push({ id, name, content, createdAt });
+    }
+
+    await user.save();
+    res.status(200).json({ message: "Crunchylist guardada exitosamente." });
+  } catch (error) {
+    res.status(500).json({ message: "Error al guardar la Crunchylist." });
+  }
+};
+
+const deleteCrunchylist = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const user = await User.findById(req.user.id);
+    user.crunchylists = user.crunchylists.filter((list) => list.id !== id);
+    await user.save();
+    res.status(200).json({ message: "Crunchylist eliminada exitosamente." });
+  } catch (error) {
+    res.status(500).json({ message: "Error al eliminar la Crunchylist." });
+  }
+};
+
 module.exports = {
   updateProfile,
   registerUser,
@@ -260,4 +472,15 @@ module.exports = {
   getProfile,
   saveUserActivity,
   toggleFavorite,
+  addToHistory,
+  removeFromHistory,
+  clearHistory,
+  resetPassword,
+  verifyEmail,
+  addProfile,
+  getProfiles,
+  deleteProfile,
+  getCrunchylists,
+  saveCrunchylist,
+  deleteCrunchylist,
 };
